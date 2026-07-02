@@ -11,13 +11,17 @@ from pathlib import Path
 
 from deep_translator import GoogleTranslator
 
-ES_REPO = Path(r"C:\Users\raiko\pso2-spanish-mod\csv-repo")
-EN_REPO = Path(r"C:\Users\raiko\pso2-spanish-mod\csv-repo-en")
-OUT_DIR = ES_REPO / "Translated" / "Auto"
-CACHE_DB = Path(r"C:\Users\raiko\pso2-spanish-mod\translation_cache.db")
-LOG = Path(r"C:\Users\raiko\pso2-spanish-mod\translate_missing.log")
-SKIP = {".git", ".circleci", "_py", "_sh", "_tools", "_fonts", "_aspell", "_misc", "Files"}
+# --- RUTAS ADAPTADAS PARA RAILWAY / LINUX ---
+# Busca la variable WORK_DIR, si no la encuentra usa /app/data por defecto
+BASE_DIR = Path(os.getenv("WORK_DIR", "/app/data"))
 
+ES_REPO = BASE_DIR / "csv-repo"
+EN_REPO = BASE_DIR / "csv-repo-en"
+OUT_DIR = ES_REPO / "Translated" / "Auto"
+CACHE_DB = BASE_DIR / "translation_cache.db"
+LOG = BASE_DIR / "translate_missing.log"
+SKIP = {".git", ".circleci", "_py", "_sh", "_tools", "_fonts", "_aspell", "_misc", "Files"}
+# --------------------------------------------
 
 def log(msg: str):
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
@@ -150,6 +154,12 @@ def main():
     es_index = index_csv(ES_REPO)
     en_index = index_csv(EN_REPO)
     files_dir = ES_REPO / "Files"
+    
+    # Manejo de error en caso de que la carpeta Files no exista todavía en Railway
+    if not files_dir.exists():
+        log(f"Error: La carpeta {files_dir} no existe. Verifica que los repositorios estén clonados.")
+        sys.exit(1)
+
     pending = sorted(f.name for f in files_dir.glob("*.csv"))
     log(f"CSV en Files/: {len(pending)} | ya traducidos: {len(es_index)} | EN: {len(en_index)}")
     done = 0
@@ -225,7 +235,8 @@ def main():
     if "--no-rebuild" not in sys.argv:
         import subprocess
         build_script = Path(__file__).with_name("build_spanish_patch.py")
-        subprocess.Popen([sys.executable, str(build_script)], cwd=build_script.parent)
+        if build_script.exists():
+            subprocess.Popen([sys.executable, str(build_script)], cwd=build_script.parent)
 
 
 if __name__ == "__main__":
