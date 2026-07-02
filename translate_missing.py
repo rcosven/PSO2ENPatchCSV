@@ -12,15 +12,20 @@ from pathlib import Path
 from deep_translator import GoogleTranslator
 
 # --- RUTAS ADAPTADAS PARA RAILWAY / LINUX ---
-# Busca la variable WORK_DIR, si no la encuentra usa /app/data por defecto
-BASE_DIR = Path(os.getenv("WORK_DIR", "/app/data"))
+# El repositorio de GitHub clonado por Railway vive en /app
+ES_REPO = Path("/app")
 
-ES_REPO = BASE_DIR / "csv-repo"
-EN_REPO = BASE_DIR / "csv-repo-en"
-OUT_DIR = ES_REPO / "Translated" / "Auto"
-CACHE_DB = BASE_DIR / "translation_cache.db"
-LOG = BASE_DIR / "translate_missing.log"
-SKIP = {".git", ".circleci", "_py", "_sh", "_tools", "_fonts", "_aspell", "_misc", "Files"}
+# El disco persistente (Volume) para guardar tu progreso vive en /app/data
+OUT_DIR = Path("/app/data/Translated/Auto")
+CACHE_DB = Path("/app/data/translation_cache.db")
+LOG = Path("/app/data/translate_missing.log")
+
+# Como no subimos el repo en inglés a Railway, lo dejamos apuntando a una ruta vacía 
+# para que el script use los archivos en español sin fallar.
+EN_REPO = Path("/app/data/csv-repo-en") 
+
+# Agregamos "data" a la lista de SKIP para que no intente indexar las traducciones terminadas
+SKIP = {".git", ".circleci", "_py", "_sh", "_tools", "_fonts", "_aspell", "_misc", "Files", "data"}
 # --------------------------------------------
 
 def log(msg: str):
