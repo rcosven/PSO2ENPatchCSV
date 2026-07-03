@@ -1,7 +1,7 @@
 IncidentName#0,"""Extermina a todos los Objetivos!"""
 TrialBeginMsg#0,"""緊急指令！$(0)を<br>含めた全ての敵を撃破せよ！"""
 TrialAbstract#0,"""緊急指令！$(0)を<br>含めた全ての敵を撃破せよ！"""
-TargetName#0,"""討伐対象を全て"""
+TargetName#0,"""Todos los objetivos de subyugacion"""
 NpcComOnBegin#0,"""さらなる敵性反応の出現を確認！<br>各員、戦闘態勢を維持しつつ<br>速やかに対処してください！"""
 NpcComOnSuccess#0,"""/face2 お疲れ様でした！<br>各員の臨機応変な対応に<br>感謝します！"""
 NpcComOnBegin#1,"""おまけとばかりの敵性存在か……<br>各員、現状を維持しつつ<br>さらに新たな敵にも備えろ。"""
