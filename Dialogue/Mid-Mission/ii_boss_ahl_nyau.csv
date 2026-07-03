@@ -1,5 +1,5 @@
 IncidentName#0,"""Clases con Nyau!"""
-TrialBeginMsg#0,"""Derrotar a Nyau!"""
+TrialBeginMsg#0,"""¡Derrotar a Nyau!"""
 TrialAbstract#0,"""Derrota a $(0)"""
 NpcComOnBegin#0,"""Hemos confirmado la aparición de Nyau.<br>Parece que está dando problemas<br>Por favor, tome las acciones adecuadas。"""
 NpcComOnSuccess#0,"""Parece que Nyau se retira<br>buen trabajo."""

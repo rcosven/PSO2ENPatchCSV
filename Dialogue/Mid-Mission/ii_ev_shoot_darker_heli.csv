@@ -8,7 +8,7 @@ NpcComOnBegin#0,"""/face3 ¡El avion de combate ARKS ha sido erosionado por Dark
 NpcComOnBegin2#0,"""¡Destruye el avion correspondiente ahora mientras la erosion este incompleta!"""
 NpcComOnHp50#0,"""Ten cuidado.<br>La corrupción Darker está progresando rapidamente."""
 NpcComOnHp10#0,"""Es casi el momento de destruir el luchador contra la erosion."""
-NpcComOnLanding#0,""" Sin usar"""
+NpcComOnLanding#0,"""sin usar"""
 NpcComOnTimeNotice#0,"""...El nivel de erosion es bastante grave. <br>¡Date prisa para destruirlo, te lo robaran!"""
 NpcComOnSuccess#0,"""Confirmada la destruccion del luchador contra la erosion. <br>Hiciste un gran trabajo."""
 NpcComOnFailure#0,"""...La reaccion del luchador, desaparecio. <br>Darker, ¿que planeas hacer al quitarte esa cosa...?"""
