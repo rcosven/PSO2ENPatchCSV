@@ -1,6 +1,6 @@
 IncidentName#0,"""Derrota Anga Fundarge"""
-TrialBeginMsg#0,"""Derrotar a Anga Fundarge!"""
-TrialAbstract#0,"""Derrotar a Anga Fundarge!"""
+TrialBeginMsg#0,"""¡Derrotar a Anga Fundarge!"""
+TrialAbstract#0,"""¡Derrotar a Anga Fundarge!"""
 NpcComOnBegin#0,"""異常な天候……！？<br>……強力な敵性反応を感知！<br>アークス各員、迎撃態勢を！"""
 NpcComOnSuccess#0,"""アンガ・ファンダージ<br>反応消失、確認しました。<br>お疲れ様でした！"""
 1st_HP_Under_50#0,"""その調子で問題ありません。<br>攻撃の継続をお願いします。"""
