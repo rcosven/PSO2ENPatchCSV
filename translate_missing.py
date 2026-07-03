@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Generate Spanish CSV for untranslated Files/ using EN patch + machine translation."""
+"""Generate Spanish CSV for untranslated Files using machine translation."""
 import csv
-import json
 import os
 import re
 import sqlite3
 import sys
 import time
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -15,12 +13,13 @@ from deep_translator import GoogleTranslator
 
 # --- RUTAS ADAPTADAS PARA RAILWAY / LINUX ---
 BASE_DIR = Path(os.getenv("WORK_DIR", "/app/data"))
-ES_REPO = Path("/app")
-OUT_DIR = Path("/app/data/Translated/Auto")
+REPO_DIR = Path("/app")
 CACHE_DB = Path("/app/data/translation_cache.db")
 LOG = Path("/app/data/translate_missing.log")
-EN_REPO = Path("/app/data/csv-repo-en") 
-SKIP = {".git", ".circleci", "_py", "_sh", "_tools", "_fonts", "_aspell", "_misc", "Files", "data"}
+EN_REPO = Path("/app/data/csv-repo-en") # Opcional, por si lo sigues usando
+
+# Las carpetas que queremos revisar y traducir in-place
+TARGET_FOLDERS = ["Dialogue", "Files", "Misc", "Orders", "Quests", "Story", "Tutorial", "UI"]
 # --------------------------------------------
 
 def log(msg: str):
@@ -54,6 +53,7 @@ def has_cjk(text: str) -> bool:
     return bool(re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", text))
 
 def init_cache():
+    CACHE_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(CACHE_DB)
     conn.execute("CREATE TABLE IF NOT EXISTS cache (src TEXT, lang TEXT, dst TEXT, PRIMARY KEY(src, lang))")
     conn.commit()
@@ -66,30 +66,50 @@ def should_skip_translate(text: str) -> bool:
         return True
     return "$((" in text or "${" in text
 
-def translate_cached(conn, text: str, src_lang: str, translator: GoogleTranslator | None = None) -> str:
-    if should_skip_translate(text):
-        return text
-    row = conn.execute("SELECT dst FROM cache WHERE src=? AND lang=?", (text, src_lang)).fetchone()
-    if row:
-        return row[0]
-    tr = translator or GoogleTranslator(source=src_lang, target="es")
-    try:
-        out = tr.translate(text[:4500])
-        if not out:
-            out = text
-    except Exception:
-        time.sleep(0.5)
-        try:
-            out = tr.translate(text[:4500])
-        except Exception:
-            out = text
-    out = apply_release_sed(out)
-    conn.execute("INSERT OR REPLACE INTO cache VALUES (?,?,?)", (text, src_lang, out))
-    return out
+def setup_git():
+    """Prepara el repositorio y asegura que estamos en la última versión de GitHub para evitar conflictos."""
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        log("ADVERTENCIA: GITHUB_TOKEN no encontrado. No se podrá subir a GitHub.")
+        return False
+
+    log("Configurando credenciales de Git y sincronizando con el repositorio remoto...")
+    subprocess.run(["git", "config", "--global", "user.email", "railway@bot.com"], cwd=REPO_DIR)
+    subprocess.run(["git", "config", "--global", "user.name", "Railway Traductor"], cwd=REPO_DIR)
+
+    remote_url = f"https://oauth2:{token}@github.com/rcosven/PSO2ENPatchCSV.git"
+    subprocess.run(["git", "remote", "set-url", "origin", remote_url], cwd=REPO_DIR)
+    
+    # Asegurarnos de tener lo último de la rama ES para no sobreescribir avance
+    subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR)
+    subprocess.run(["git", "reset", "--hard", "origin/ES"], cwd=REPO_DIR)
+    return True
+
+def push_to_github():
+    log("Iniciando guardado en GitHub...")
+    # Añadimos solo las carpetas objetivo
+    for folder in TARGET_FOLDERS:
+        folder_path = REPO_DIR / folder
+        if folder_path.exists():
+            subprocess.run(["git", "add", f"{folder}/"], cwd=REPO_DIR)
+    
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR, capture_output=True, text=True)
+    if not status.stdout.strip():
+        log("No hay cambios nuevos para subir.")
+        return
+
+    subprocess.run(["git", "commit", "-m", "Auto-traducción: Actualización parcial desde Railway"], cwd=REPO_DIR)
+    push = subprocess.run(["git", "push", "origin", "HEAD:ES"], cwd=REPO_DIR, capture_output=True, text=True)
+    
+    if push.returncode == 0:
+        log("¡Progreso guardado exitosamente en GitHub!")
+    else:
+        log(f"Error al subir: {push.stderr}")
 
 def batch_translate(conn, texts: list[str], src_lang: str) -> dict[str, str]:
     out_map: dict[str, str] = {}
     pending: list[str] = []
+    
     for text in texts:
         if should_skip_translate(text):
             out_map[text] = text
@@ -99,134 +119,91 @@ def batch_translate(conn, texts: list[str], src_lang: str) -> dict[str, str]:
             out_map[text] = row[0]
         else:
             pending.append(text)
+            
     if not pending:
         return out_map
+
     tr = GoogleTranslator(source=src_lang, target="es")
     chunk_size = 40
+    
     for i in range(0, len(pending), chunk_size):
         chunk = pending[i : i + chunk_size]
-        try:
-            translated = tr.translate_batch(chunk)
-        except Exception:
-            time.sleep(0.5)
-            translated = [translate_cached(conn, t, src_lang, tr) for t in chunk]
+        max_retries = 5
+        translated = None
+        
+        # Sistema de reintentos en caso de que Google bloquee la IP temporalmente
+        for attempt in range(max_retries):
+            try:
+                translated = tr.translate_batch(chunk)
+                break
+            except Exception as e:
+                wait_time = 2 ** attempt # Espera 1s, 2s, 4s, 8s, 16s...
+                log(f"Error de red/API traduciendo lote. Reintento {attempt + 1}/{max_retries} en {wait_time}s... Error: {str(e)[:50]}")
+                time.sleep(wait_time)
+                
+        if not translated:
+            log("Lote fallido tras múltiples intentos. Se mantendrán las líneas originales por ahora.")
+            translated = chunk # Fallback a original
+            
         if not isinstance(translated, list):
             translated = [translated]
+            
         for src, dst in zip(chunk, translated):
             dst = apply_release_sed(dst or src)
             out_map[src] = dst
             conn.execute("INSERT OR REPLACE INTO cache VALUES (?,?,?)", (src, src_lang, dst))
+            
         conn.commit()
-        time.sleep(0.1)
+        time.sleep(0.2) # Pausa amigable para no saturar la API
+        
     return out_map
-
-def index_csv(repo: Path) -> dict[str, Path]:
-    out = {}
-    for root, _, files in os.walk(repo):
-        parts = Path(root).parts
-        if any(s in parts for s in SKIP):
-            continue
-        for fn in files:
-            if fn.endswith(".csv"):
-                out[fn] = Path(root) / fn
-    return out
 
 def read_rows(path: Path) -> list[list[str]]:
     with open(path, encoding="utf-8") as f:
         return list(csv.reader(f, strict=True))
 
-def push_to_github():
-    token = os.getenv("GITHUB_TOKEN")
-    if not token:
-        log("GITHUB_TOKEN no encontrado. Saltando subida automática.")
-        return
-
-    log("Preparando archivos para subir a GitHub...")
-    repo_dir = "/app"
-    dest_dir = Path("/app/Translated/Auto")
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    src_dir = Path("/app/data/Translated/Auto")
-    
-    if not src_dir.exists():
-        log("No hay traducciones nuevas en el disco persistente.")
-        return
-
-    for file_path in src_dir.glob("*.csv"):
-        shutil.copy2(file_path, dest_dir / file_path.name)
-
-    subprocess.run(["git", "config", "--global", "user.email", "railway@bot.com"], cwd=repo_dir)
-    subprocess.run(["git", "config", "--global", "user.name", "Railway Traductor"], cwd=repo_dir)
-
-    remote_url = f"https://{token}@github.com/rcosven/PSO2ENPatchCSV.git"
-    subprocess.run(["git", "remote", "set-url", "origin", remote_url], cwd=repo_dir)
-
-    subprocess.run(["git", "add", "Translated/Auto/"], cwd=repo_dir)
-    
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=repo_dir, capture_output=True, text=True)
-    if not status.stdout.strip():
-        log("No hay cambios nuevos para subir. Todo está al día.")
-        return
-
-    subprocess.run(["git", "commit", "-m", "Auto-traducción desde Railway"], cwd=repo_dir)
-    
-    log("Subiendo cambios a GitHub...")
-    push = subprocess.run(["git", "push", "origin", "HEAD:ES"], cwd=repo_dir, capture_output=True, text=True)
-    
-    if push.returncode == 0:
-        log("¡Subida a GitHub exitosa! Los archivos están en tu repositorio.")
-    else:
-        log(f"Error al subir: {push.stderr}")
-
 def main():
     LOG.write_text("", encoding="utf-8")
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    conn = init_cache()
-    log("Indexando repositorios CSV...")
-    es_index = index_csv(ES_REPO)
-    en_index = index_csv(EN_REPO)
-    files_dir = ES_REPO / "Files"
+    log("Iniciando proceso de traducción profunda...")
     
-    if not files_dir.exists():
-        log(f"Error: La carpeta {files_dir} no existe. Verifica que los repositorios estén clonados.")
-        sys.exit(1)
+    git_ready = setup_git()
+    conn = init_cache()
+    
+    files_to_process = []
+    
+    # Escanear todas las carpetas objetivo buscando CSVs
+    for folder in TARGET_FOLDERS:
+        folder_dir = REPO_DIR / folder
+        if folder_dir.exists():
+            for file_path in folder_dir.rglob("*.csv"):
+                files_to_process.append(file_path)
 
-    pending = sorted(f.name for f in files_dir.glob("*.csv"))
-    log(f"CSV en Files/: {len(pending)} | ya traducidos: {len(es_index)} | EN: {len(en_index)}")
-    done = 0
-    skipped = 0
+    log(f"Se encontraron {len(files_to_process)} archivos CSV en las carpetas seleccionadas.")
+    
+    files_processed = 0
+    files_modified_in_session = 0
 
-    for i, fn in enumerate(pending):
-        if fn in es_index:
-            skipped += 1
+    for file_path in files_to_process:
+        rows = read_rows(file_path)
+        if not rows:
             continue
-        out_path = OUT_DIR / fn
-        if out_path.exists():
-            done += 1
-            continue
 
-        en_path = en_index.get(fn)
-        es_path = files_dir / fn
-        src_path = en_path if en_path else es_path
-        rows = read_rows(src_path)
-        src_lang = "ja" if has_cjk(unquote(rows[0][1]) if rows else "") else "en"
-        if en_path:
-            en_rows = read_rows(en_path)
-            if not has_cjk(unquote(en_rows[0][1]) if en_rows else ""):
-                rows = en_rows
-                src_lang = "en"
+        # Detectar idioma base aproximado del archivo
+        src_lang_file = "ja" if has_cjk(unquote(rows[0][1]) if len(rows[0]) > 1 else "") else "en"
 
         texts_to_translate: list[str] = []
         row_meta: list[tuple[list[str], str, str]] = []
+        
         for row in rows:
             if len(row) < 2:
                 row_meta.append((row, "", ""))
                 continue
+                
             text = unquote(row[1])
-            if has_cjk(text):
-                src_lang_row = "ja"
-            else:
-                src_lang_row = "en"
+            # Forzamos idioma de origen basándonos en si tiene caracteres japoneses
+            src_lang_row = "ja" if has_cjk(text) else "en"
             row_meta.append((row, text, src_lang_row))
+            
             if not should_skip_translate(text):
                 texts_to_translate.append(text)
 
@@ -234,41 +211,53 @@ def main():
         for _, text, lang in row_meta:
             if text and not should_skip_translate(text):
                 by_lang[lang].add(text)
+                
         trans_maps: dict[str, dict[str, str]] = {}
         for lang, unique in by_lang.items():
             if unique:
                 trans_maps[lang] = batch_translate(conn, sorted(unique), lang)
 
         new_rows = []
+        needs_update = False
+        
         for item in row_meta:
             row, text, lang = item
             if len(row) < 2:
                 new_rows.append(row)
                 continue
+                
             if should_skip_translate(text) or lang not in trans_maps:
                 translated = text
             else:
                 translated = trans_maps[lang].get(text, text)
+                
+            if translated != text:
+                needs_update = True
+                
             new_rows.append([row[0], quote(translated)])
 
-        with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-            csv.writer(f, lineterminator="\n").writerows(new_rows)
-        done += 1
-        if done % 25 == 0:
-            total_auto = len(list(OUT_DIR.glob("*.csv")))
-            log(f"Traducidos: {done}/{len(pending)} | Auto total: {total_auto} | omitidos: {skipped}")
+        # Sobrescribir el archivo SOLO si hubo traducciones nuevas (evita gastar disco innecesariamente)
+        if needs_update:
+            with open(file_path, "w", encoding="utf-8", newline="\n") as f:
+                csv.writer(f, lineterminator="\n").writerows(new_rows)
+            files_modified_in_session += 1
+            
+        files_processed += 1
+        
+        if files_processed % 50 == 0:
+            log(f"Progreso: {files_processed}/{len(files_to_process)} archivos escaneados. ({files_modified_in_session} modificados)")
+            
+            # Subir a GitHub cada 50 archivos revisados para asegurar progreso
+            if git_ready and files_modified_in_session > 0:
+                push_to_github()
+                files_modified_in_session = 0 # Reiniciar contador tras la subida
 
-    total_auto = len(list(OUT_DIR.glob("*.csv")))
-    log(f"Final: {done} generados, {skipped} ya existian, total Auto: {total_auto}")
+    log("Escaneo y traducción completados.")
     conn.close()
 
-    # Ejecutar la subida automática al finalizar todas las traducciones
-    push_to_github()
-
-    if "--no-rebuild" not in sys.argv:
-        build_script = Path(__file__).with_name("build_spanish_patch.py")
-        if build_script.exists():
-            subprocess.Popen([sys.executable, str(build_script)], cwd=build_script.parent)
+    # Subida final de lo que haya quedado pendiente
+    if git_ready:
+        push_to_github()
 
 if __name__ == "__main__":
     main()
