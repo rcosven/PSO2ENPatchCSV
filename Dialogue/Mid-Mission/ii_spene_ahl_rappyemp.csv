@@ -1,5 +1,5 @@
 IncidentName#0,"""Ya sea luchando contra $(0)!"""
-TrialBeginMsg#0,"""Repeler $(1) $(0)!"""
+TrialBeginMsg#0,"""Repelente $(1) $(0)!"""
 TrialAbstract#0,"""Repeler el $(0) que ha aparecido!"""
 NpcComOnPreBegin#0,"""¡Se acerca una nueva<br>fuente de calor!, por favor ten cuidado, ¡Ya viene!"""
 NpcComOnBegin#0,"""¿Ese es Rappy...? <br>No parece haber ninguna hostilidad, pero para evitar confusion,<br>cada miembro debe intentar repelerlos."""
