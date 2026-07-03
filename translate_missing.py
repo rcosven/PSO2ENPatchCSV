@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate Spanish CSV for untranslated Files using machine translation.
-   FIXED VERSION - Only translates remaining Japanese text + only writes files that actually change.
+   v2 - Detecta si ya está en español (usando langdetect). Solo traduce lo que NO está en español.
+   Formato estricto: key,"""texto"""  (sin comas extras, " internas → ')
 """
 
 import os
@@ -11,9 +12,18 @@ import time
 import subprocess
 from pathlib import Path
 from io import StringIO
+
 from deep_translator import GoogleTranslator
 
-# --- RUTAS ADAPTADAS PARA RAILWAY / LINUX ---
+# === IMPORT langdetect (necesario para detectar español) ===
+try:
+    from langdetect import detect, DetectorFactory
+    DetectorFactory.seed = 0
+    HAS_LANGDETECT = True
+except ImportError:
+    HAS_LANGDETECT = False
+
+# --- RUTAS ---
 BASE_DIR = Path(os.getenv("WORK_DIR", "/app/data"))
 REPO_DIR = Path("/app")
 CACHE_DB = Path("/app/data/translation_cache.db")
@@ -53,17 +63,30 @@ def should_skip_translate(text: str) -> bool:
         return True
     if text.startswith("<&") or (text.startswith("<") and ">" in text[:20]):
         return True
-    # Skip placeholder / internal tags (arreglado el syntax error)
     if "((" in text or "intextor" in text.lower():
         return True
     return False
 
+def detect_language(text: str) -> str:
+    """Devuelve 'ja', 'es', 'en' u otro."""
+    if has_cjk(text):
+        return "ja"
+    
+    if not HAS_LANGDETECT:
+        return "en"
+    
+    try:
+        lang = detect(text)
+        return lang
+    except Exception:
+        return "en"
+
 def setup_git():
     token = os.getenv("GITHUB_TOKEN")
     if not token:
-        log("ADVERTENCIA: GITHUB_TOKEN no encontrado. No se podrá subir a GitHub.")
+        log("ADVERTENCIA: GITHUB_TOKEN no encontrado.")
         return False
-    log("Configurando credenciales de Git y sincronizando...")
+    log("Configurando Git...")
     subprocess.run(["git", "config", "--global", "--add", "safe.directory", str(REPO_DIR)], check=False)
     subprocess.run(["git", "config", "--global", "user.email", "railway@bot.com"], check=False)
     subprocess.run(["git", "config", "--global", "user.name", "Railway Traductor"], check=False)
@@ -71,36 +94,33 @@ def setup_git():
     status = subprocess.run(["git", "status"], cwd=REPO_DIR, capture_output=True)
     
     if status.returncode != 0:
-        log("No se detectó la carpeta .git (Docker la omitió). Reconstruyendo repositorio internamente...")
+        log("Reconstruyendo repo Git...")
         subprocess.run(["git", "init"], cwd=REPO_DIR, check=False)
         subprocess.run(["git", "checkout", "-b", "ES"], cwd=REPO_DIR, check=False)
         subprocess.run(["git", "remote", "add", "origin", remote_url], cwd=REPO_DIR, check=False)
         subprocess.run(["git", "fetch", "origin", "ES"], cwd=REPO_DIR, check=False)
         subprocess.run(["git", "reset", "--mixed", "origin/ES"], cwd=REPO_DIR, check=False)
     else:
-        log("Repositorio Git detectado correctamente. Actualizando URL...")
         subprocess.run(["git", "remote", "set-url", "origin", remote_url], cwd=REPO_DIR, check=False)
         subprocess.run(["git", "fetch", "origin", "ES"], cwd=REPO_DIR, check=False)
     return True
 
 def push_to_github():
-    log("Iniciando guardado de reparaciones en GitHub...")
+    log("Guardando cambios en GitHub...")
     for folder in TARGET_FOLDERS:
-        folder_path = REPO_DIR / folder
-        if folder_path.exists():
+        if (REPO_DIR / folder).exists():
             subprocess.run(["git", "add", f"{folder}/"], cwd=REPO_DIR, check=False)
     
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR, capture_output=True, text=True)
     if not status.stdout.strip():
         log("No hay cambios nuevos para subir.")
         return
-    subprocess.run(["git", "commit", "-m", "Auto-reparación y traducción parcial desde Railway"], cwd=REPO_DIR, check=False)
+    subprocess.run(["git", "commit", "-m", "Auto-traducción y reparación CSV (ES)"], cwd=REPO_DIR, check=False)
     push = subprocess.run(["git", "push", "origin", "HEAD:ES"], cwd=REPO_DIR, capture_output=True, text=True)
-    
     if push.returncode == 0:
-        log("¡Progreso guardado exitosamente en GitHub!")
+        log("¡Cambios subidos a GitHub!")
     else:
-        log(f"Error al subir: {push.stderr}")
+        log(f"Error push: {push.stderr[:200]}")
 
 def batch_translate(conn, texts: list[str], src_lang: str) -> dict[str, str]:
     out_map: dict[str, str] = {}
@@ -123,22 +143,17 @@ def batch_translate(conn, texts: list[str], src_lang: str) -> dict[str, str]:
     chunk_size = 40
     
     for i in range(0, len(pending), chunk_size):
-        chunk = pending[i : i + chunk_size]
-        max_retries = 5
+        chunk = pending[i:i + chunk_size]
         translated = None
-        
-        for attempt in range(max_retries):
+        for attempt in range(5):
             try:
                 translated = tr.translate_batch(chunk)
                 break
-            except Exception as e:
-                wait_time = 2 ** attempt
-                log(f"Error de red traduciendo lote. Reintento {attempt + 1}/{max_retries} en {wait_time}s...")
-                time.sleep(wait_time)
+            except Exception:
+                time.sleep(2 ** attempt)
         
         if not translated:
             translated = chunk
-        
         if not isinstance(translated, list):
             translated = [translated]
         
@@ -146,18 +161,15 @@ def batch_translate(conn, texts: list[str], src_lang: str) -> dict[str, str]:
             dst = apply_release_sed(dst or src)
             out_map[src] = dst
             conn.execute("INSERT OR REPLACE INTO cache VALUES (?,?,?)", (src, src_lang, dst))
-        
         conn.commit()
-        time.sleep(0.2)
+        time.sleep(0.15)
     
     return out_map
 
 def read_and_repair_rows(path: Path) -> list[list[str]]:
-    """Lee el archivo como texto plano, eliminando de raíz cualquier desastre de comillas múltiples."""
     rows = []
     if not path.exists():
         return rows
-    
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -166,10 +178,8 @@ def read_and_repair_rows(path: Path) -> list[list[str]]:
             if "," in line:
                 key, val = line.split(",", 1)
                 val = val.strip()
-                
                 if val.startswith('"') and val.endswith('"'):
                     val = val.strip('"')
-                
                 val = val.replace('"', "'")
                 rows.append([key, val])
             else:
@@ -178,7 +188,11 @@ def read_and_repair_rows(path: Path) -> list[list[str]]:
 
 def main():
     LOG.write_text("", encoding="utf-8")
-    log("Iniciando proceso de traducción PROFUNDA (solo JA pendientes) con auto-reparación condicional...")
+    log("=== Iniciando traducción inteligente (solo lo que NO está en español) ===")
+    
+    if not HAS_LANGDETECT:
+        log("⚠️  langdetect NO está instalado. Instálalo con: pip install langdetect")
+        log("   Sin él solo detectaré japonés (CJK). Las líneas en inglés se quedarán como están.")
     
     git_ready = setup_git()
     conn = init_cache()
@@ -187,90 +201,96 @@ def main():
     for folder in TARGET_FOLDERS:
         folder_dir = REPO_DIR / folder
         if folder_dir.exists():
-            for file_path in folder_dir.rglob("*.csv"):
-                files_to_process.append(file_path)
+            for p in folder_dir.rglob("*.csv"):
+                files_to_process.append(p)
     
-    log(f"Se encontraron {len(files_to_process)} archivos CSV para analizar.")
+    log(f"Se encontraron {len(files_to_process)} archivos CSV.")
     
     files_processed = 0
-    files_modified_in_session = 0
+    files_modified = 0
     
     for file_path in files_to_process:
         rows = read_and_repair_rows(file_path)
         if not rows:
             continue
         
-        # Leemos el contenido original para comparar si realmente cambió algo
+        original_content = ""
         try:
             original_content = file_path.read_text(encoding="utf-8")
-        except Exception:
-            original_content = ""
+        except:
+            pass
         
-        texts_to_translate: list[str] = []
-        row_meta: list[tuple[list[str], str, str]] = []
+        texts_to_translate_ja: list[str] = []
+        texts_to_translate_en: list[str] = []
+        row_meta: list[tuple] = []
         
         for row in rows:
             if len(row) < 2:
-                row_meta.append((row, "", ""))
+                row_meta.append((row, "", "", False))
                 continue
             
             text = row[1]
-            src_lang_row = "ja" if has_cjk(text) else "en"
-            row_meta.append((row, text, src_lang_row))
+            lang = detect_language(text)
             
-            # SOLO traducimos si tiene japonés (CJK). Una vez traducido → no lo tocamos más.
-            if has_cjk(text) and not should_skip_translate(text):
-                texts_to_translate.append(text)
+            needs_trans = False
+            if lang == "ja":
+                needs_trans = True
+                texts_to_translate_ja.append(text)
+            elif lang != "es" and not should_skip_translate(text):
+                needs_trans = True
+                texts_to_translate_en.append(text)
+            
+            row_meta.append((row, text, lang, needs_trans))
         
-        trans_map: dict[str, str] = {}
-        if texts_to_translate:
-            unique_ja = sorted(set(texts_to_translate))
-            trans_map = batch_translate(conn, unique_ja, "ja")
+        # Traducir japonés
+        trans_ja = batch_translate(conn, sorted(set(texts_to_translate_ja)), "ja") if texts_to_translate_ja else {}
+        
+        # Traducir inglés / otros → español
+        trans_en = batch_translate(conn, sorted(set(texts_to_translate_en)), "en") if texts_to_translate_en else {}
         
         new_rows = []
         for item in row_meta:
-            row, text, lang = item
+            row, text, lang, needs_trans = item
             if len(row) < 2:
                 new_rows.append(row)
                 continue
             
-            if lang == "ja" and text in trans_map:
-                translated = trans_map[text]
+            if needs_trans:
+                if lang == "ja":
+                    translated = trans_ja.get(text, text)
+                else:
+                    translated = trans_en.get(text, text)
             else:
                 translated = text
             
             translated_clean = translated.replace('"', "'")
             new_rows.append([row[0], translated_clean])
         
-        # Construimos el nuevo contenido exacto
+        # Construir contenido nuevo
         output = StringIO()
-        for row_data in new_rows:
-            if len(row_data) == 2:
-                key = row_data[0]
-                val = row_data[1]
-                output.write(f'{key},"""{val}"""\n')
+        for r in new_rows:
+            if len(r) == 2:
+                output.write(f'{r[0]},"""{r[1]}"""\n')
             else:
-                output.write(row_data[0] + "\n")
+                output.write(r[0] + "\n")
         new_content = output.getvalue()
         
-        # SOLO escribimos si hubo cambio real (traducción nueva o reparación de comillas)
+        # Solo escribir si cambió algo
         if new_content != original_content:
             with open(file_path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(new_content)
-            files_modified_in_session += 1
+            files_modified += 1
             log(f"  → MODIFICADO: {file_path.relative_to(REPO_DIR)}")
         
         files_processed += 1
-        
         if files_processed % 50 == 0:
-            log(f"Progreso: {files_processed}/{len(files_to_process)} archivos procesados.")
-            if git_ready and files_modified_in_session > 0:
+            log(f"Progreso: {files_processed}/{len(files_to_process)} archivos | Modificados esta sesión: {files_modified}")
+            if git_ready and files_modified > 0:
                 push_to_github()
-                files_modified_in_session = 0
+                files_modified = 0
     
-    log("Escaneo, reparación y traducción completados.")
+    log("Proceso terminado.")
     conn.close()
-    
     if git_ready:
         push_to_github()
 
