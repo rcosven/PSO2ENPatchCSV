@@ -1,7 +1,7 @@
 IncidentName#0,"""Recuperar los minerales raros"""
 TrialBeginMsg#0,"""Recupera los minerales raros"""
 TrialAbstract#0,"""¡Recoger las muestras dispersas de minerales raros!"""
-ToastPickup#0,"""Has recogido $(0) muestra(s) de $(1)."""
+ToastPickup#0,"""Ha recogido $(0) muestra(s) de $(1)."""
 ToastCollect#0,"""$(0) deposito $(1) Muestra(s)."""
 ToastRewards#0,"""$(0) deposito $(1) Muestra(s). Recibes $(2) EXP y $(3) Mesetas."""
 NpcComOnBegin#0,"""Esta es una orden.<br>se han detectado lecturas de un raro mineral.<br>Todos los Arks preparence para reunir estos minerales."""
