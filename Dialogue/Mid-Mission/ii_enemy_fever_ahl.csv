@@ -1,5 +1,5 @@
 IncidentName#0,"""¡Derrota a muchas especies raras!"""
-TrialBeginMsg#0,"""For a certain time, Derrotar a rare enemies!"""
-TrialAbstract#0,"""For a certain time, Derrotar a rare enemies!"""
+TrialBeginMsg#0,"""¡Durante un tiempo, Derrotar a enemigos raros!"""
+TrialAbstract#0,"""¡Durante un tiempo, Derrotar a enemigos raros!"""
 NpcComOnBegin#0,"""¡Muchas reacciones confirmadas en el punto $(0)! <br>¡Parece que hay bastantes! <br>¡Todos, tengan cuidado!"""
 NpcComOnSuccess#0,"""¡Se ha confirmado que la reaccion hostil ha desaparecido! <br>¡Buen trabajo! <br>¡Gracias a todos por su arduo trabajo!"""
