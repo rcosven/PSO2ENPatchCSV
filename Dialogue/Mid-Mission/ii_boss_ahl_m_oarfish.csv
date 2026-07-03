@@ -1,6 +1,6 @@
-IncidentName#0,"""Derrota a $(0)!"""
+IncidentName#0,"""¡Derrota un $(0)!"""
 TrialBeginMsg#0,"""¡Derrota a $(0)!"""
-TrialAbstract#0,"""Repele a $(0)"""
+TrialAbstract#0,"""Repeler un $(0)"""
 NpcComOnBegin#0,"""Esta es una transmisión de emergencia...<br>A $(0) ha aparecido,<br>obstaculizando nuestra investigación, interceptalo."""
 NpcComOnBegin2#0,"""付近にある「ｘｘｘ」を有効利用しろ<br>あの巨体といえど口を狙えば<br>有効なはずだ"""
 NpcComOnSuccess#0,"""$(0)の撤退を確認<br>なんとか撃退できたな。<br>引き続き調査を行え"""
