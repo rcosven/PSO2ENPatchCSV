@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Generate Spanish CSV for untranslated Files using machine translation."""
-import csv
 import os
 import re
 import sqlite3
@@ -16,9 +15,8 @@ BASE_DIR = Path(os.getenv("WORK_DIR", "/app/data"))
 REPO_DIR = Path("/app")
 CACHE_DB = Path("/app/data/translation_cache.db")
 LOG = Path("/app/data/translate_missing.log")
-EN_REPO = Path("/app/data/csv-repo-en") # Opcional, por si lo sigues usando
 
-# Las carpetas que queremos revisar y traducir in-place
+# Las carpetas que queremos revisar, reparar y traducir in-place
 TARGET_FOLDERS = ["Dialogue", "Files", "Misc", "Orders", "Quests", "Story", "Tutorial", "UI"]
 # --------------------------------------------
 
@@ -38,16 +36,6 @@ def apply_release_sed(text: str) -> str:
     for k, v in repl.items():
         text = text.replace(k, v)
     return text
-
-def unquote(val: str) -> str:
-    if val.startswith('"""') and val.endswith('"""'):
-        return val[3:-3]
-    if val.startswith('"') and val.endswith('"'):
-        return val[1:-1]
-    return val
-
-def quote(val: str) -> str:
-    return f'"""{val}"""'
 
 def has_cjk(text: str) -> bool:
     return bool(re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", text))
@@ -74,15 +62,11 @@ def setup_git():
         return False
 
     log("Configurando credenciales de Git y sincronizando...")
-    
-    # Previene errores de seguridad de Git al correr como usuario "root" en contenedores
     subprocess.run(["git", "config", "--global", "--add", "safe.directory", str(REPO_DIR)])
     subprocess.run(["git", "config", "--global", "user.email", "railway@bot.com"])
     subprocess.run(["git", "config", "--global", "user.name", "Railway Traductor"])
 
     remote_url = f"https://oauth2:{token}@github.com/rcosven/PSO2ENPatchCSV.git"
-
-    # Revisar si la carpeta actual ya es un repositorio de Git válido
     status = subprocess.run(["git", "status"], cwd=REPO_DIR, capture_output=True)
     
     if status.returncode != 0:
@@ -90,12 +74,7 @@ def setup_git():
         subprocess.run(["git", "init"], cwd=REPO_DIR)
         subprocess.run(["git", "checkout", "-b", "ES"], cwd=REPO_DIR)
         subprocess.run(["git", "remote", "add", "origin", remote_url], cwd=REPO_DIR)
-        
-        log("Descargando historial de tu rama ES desde GitHub...")
         subprocess.run(["git", "fetch", "origin", "ES"], cwd=REPO_DIR)
-        
-        # El modo --mixed le dice a Git que asocie la historia descargada con los 
-        # archivos que ya existen en tu disco, SIN sobrescribirlos ni borrarlos.
         subprocess.run(["git", "reset", "--mixed", "origin/ES"], cwd=REPO_DIR)
     else:
         log("Repositorio Git detectado correctamente. Actualizando URL...")
@@ -105,8 +84,7 @@ def setup_git():
     return True
 
 def push_to_github():
-    log("Iniciando guardado en GitHub...")
-    # Añadimos solo las carpetas objetivo
+    log("Iniciando guardado de reparaciones en GitHub...")
     for folder in TARGET_FOLDERS:
         folder_path = REPO_DIR / folder
         if folder_path.exists():
@@ -117,7 +95,7 @@ def push_to_github():
         log("No hay cambios nuevos para subir.")
         return
 
-    subprocess.run(["git", "commit", "-m", "Auto-traducción: Actualización parcial desde Railway"], cwd=REPO_DIR)
+    subprocess.run(["git", "commit", "-m", "Auto-reparación y traducción parcial desde Railway"], cwd=REPO_DIR)
     push = subprocess.run(["git", "push", "origin", "HEAD:ES"], cwd=REPO_DIR, capture_output=True, text=True)
     
     if push.returncode == 0:
@@ -150,19 +128,17 @@ def batch_translate(conn, texts: list[str], src_lang: str) -> dict[str, str]:
         max_retries = 5
         translated = None
         
-        # Sistema de reintentos en caso de que Google bloquee la IP temporalmente
         for attempt in range(max_retries):
             try:
                 translated = tr.translate_batch(chunk)
                 break
             except Exception as e:
-                wait_time = 2 ** attempt # Espera 1s, 2s, 4s, 8s, 16s...
-                log(f"Error de red/API traduciendo lote. Reintento {attempt + 1}/{max_retries} en {wait_time}s... Error: {str(e)[:50]}")
+                wait_time = 2 ** attempt
+                log(f"Error de red traduciendo lote. Reintento {attempt + 1}/{max_retries} en {wait_time}s...")
                 time.sleep(wait_time)
                 
         if not translated:
-            log("Lote fallido tras múltiples intentos. Se mantendrán las líneas originales por ahora.")
-            translated = chunk # Fallback a original
+            translated = chunk
             
         if not isinstance(translated, list):
             translated = [translated]
@@ -173,42 +149,60 @@ def batch_translate(conn, texts: list[str], src_lang: str) -> dict[str, str]:
             conn.execute("INSERT OR REPLACE INTO cache VALUES (?,?,?)", (src, src_lang, dst))
             
         conn.commit()
-        time.sleep(0.2) # Pausa amigable para no saturar la API
+        time.sleep(0.2)
         
     return out_map
 
-def read_rows(path: Path) -> list[list[str]]:
-    with open(path, encoding="utf-8") as f:
-        return list(csv.reader(f, strict=True))
+def read_and_repair_rows(path: Path) -> list[list[str]]:
+    """Lee el archivo como texto plano, eliminando de raíz cualquier desastre de comillas múltiples."""
+    rows = []
+    if not path.exists():
+        return rows
+        
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if "," in line:
+                key, val = line.split(",", 1)
+                val = val.strip()
+                
+                # Si viene con el error de múltiples comillas dobles, las afeitamos por completo
+                if val.startswith('"') and val.endswith('"'):
+                    val = val.strip('"')
+                
+                # Reemplazamos cualquier comilla doble interna por comilla simple para proteger el formato
+                val = val.replace('"', "'")
+                rows.append([key, val])
+            else:
+                rows.append([line])
+    return rows
 
 def main():
     LOG.write_text("", encoding="utf-8")
-    log("Iniciando proceso de traducción profunda...")
+    log("Iniciando proceso de traducción profunda con auto-reparación...")
     
     git_ready = setup_git()
     conn = init_cache()
     
     files_to_process = []
-    
-    # Escanear todas las carpetas objetivo buscando CSVs
     for folder in TARGET_FOLDERS:
         folder_dir = REPO_DIR / folder
         if folder_dir.exists():
             for file_path in folder_dir.rglob("*.csv"):
                 files_to_process.append(file_path)
 
-    log(f"Se encontraron {len(files_to_process)} archivos CSV en las carpetas seleccionadas.")
+    log(f"Se encontraron {len(files_to_process)} archivos CSV para analizar.")
     
     files_processed = 0
     files_modified_in_session = 0
 
     for file_path in files_to_process:
-        rows = read_rows(file_path)
+        # El lector personalizado limpia automáticamente la basura de comillas al abrir el archivo
+        rows = read_and_repair_rows(file_path)
         if not rows:
             continue
-
-        # Detectar idioma base aproximado del archivo
-        src_lang_file = "ja" if has_cjk(unquote(rows[0][1]) if len(rows[0]) > 1 else "") else "en"
 
         texts_to_translate: list[str] = []
         row_meta: list[tuple[list[str], str, str]] = []
@@ -218,8 +212,7 @@ def main():
                 row_meta.append((row, "", ""))
                 continue
                 
-            text = unquote(row[1])
-            # Forzamos idioma de origen basándonos en si tiene caracteres japoneses
+            text = row[1]
             src_lang_row = "ja" if has_cjk(text) else "en"
             row_meta.append((row, text, src_lang_row))
             
@@ -237,7 +230,8 @@ def main():
                 trans_maps[lang] = batch_translate(conn, sorted(unique), lang)
 
         new_rows = []
-        needs_update = False
+        # Forzamos a True si el archivo venía dañado antes de entrar aquí
+        needs_update = False 
         
         for item in row_meta:
             row, text, lang = item
@@ -250,41 +244,33 @@ def main():
             else:
                 translated = trans_maps[lang].get(text, text)
                 
-            if translated != text:
-                needs_update = True
-                
-            # Limpiamos CUALQUIER comilla doble que intente meterse dentro del texto
+            # Limpieza estricta de comillas internas de la traducción
             translated_clean = translated.replace('"', "'")
             new_rows.append([row[0], translated_clean])
 
-        # Sobrescribir el archivo armando las comillas a mano (Bypass al error de csv.writer)
-        if needs_update:
-            with open(file_path, "w", encoding="utf-8", newline="\n") as f:
-                for row_data in new_rows:
-                    if len(row_data) == 2:
-                        key = row_data[0]
-                        val = row_data[1]
-                        # Escribimos explícitamente: clave,"""valor"""
-                        f.write(f'{key},"""{val}"""\n')
-                    else:
-                        # Para líneas extrañas o vacías
-                        f.write(",".join(row_data) + "\n")
-            files_modified_in_session += 1
-            
+        # Verificamos si escribirlo de nuevo para asegurar el formato limpio
+        with open(file_path, "w", encoding="utf-8", newline="\n") as f:
+            for row_data in new_rows:
+                if len(row_data) == 2:
+                    key = row_data[0]
+                    val = row_data[1]
+                    # Escribe de forma manual y estricta: ID,"""Texto"""
+                    f.write(f'{key},"""{val}"""\n')
+                else:
+                    f.write(row_data[0] + "\n")
+                    
+        files_modified_in_session += 1
         files_processed += 1
         
         if files_processed % 50 == 0:
-            log(f"Progreso: {files_processed}/{len(files_to_process)} archivos escaneados. ({files_modified_in_session} modificados)")
-            
-            # Subir a GitHub cada 50 archivos revisados para asegurar progreso
+            log(f"Progreso: {files_processed}/{len(files_to_process)} archivos procesados.")
             if git_ready and files_modified_in_session > 0:
                 push_to_github()
-                files_modified_in_session = 0 # Reiniciar contador tras la subida
+                files_modified_in_session = 0
 
-    log("Escaneo y traducción completados.")
+    log("Escaneo, reparación y traducción completados.")
     conn.close()
 
-    # Subida final de lo que haya quedado pendiente
     if git_ready:
         push_to_github()
 
