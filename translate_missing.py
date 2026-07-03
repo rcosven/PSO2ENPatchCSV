@@ -253,12 +253,22 @@ def main():
             if translated != text:
                 needs_update = True
                 
-            new_rows.append([row[0], quote(translated)])
+            # Limpiamos CUALQUIER comilla doble que intente meterse dentro del texto
+            translated_clean = translated.replace('"', "'")
+            new_rows.append([row[0], translated_clean])
 
-        # Sobrescribir el archivo SOLO si hubo traducciones nuevas (evita gastar disco innecesariamente)
+        # Sobrescribir el archivo armando las comillas a mano (Bypass al error de csv.writer)
         if needs_update:
             with open(file_path, "w", encoding="utf-8", newline="\n") as f:
-                csv.writer(f, lineterminator="\n").writerows(new_rows)
+                for row_data in new_rows:
+                    if len(row_data) == 2:
+                        key = row_data[0]
+                        val = row_data[1]
+                        # Escribimos explícitamente: clave,"""valor"""
+                        f.write(f'{key},"""{val}"""\n')
+                    else:
+                        # Para líneas extrañas o vacías
+                        f.write(",".join(row_data) + "\n")
             files_modified_in_session += 1
             
         files_processed += 1
