@@ -8,4 +8,4 @@ NpcComOnFailure#0,"""Parece que finalmente se quedo sin jugo... Bueno, lo que se
 NpcComOnBegin#1,"""Un barco ha salido a la superficie. Lo que le permite continuar con su bombardeo eso es peligroso. Solicito su apoyo para tratar con esto urgentemente."""
 NpcComOnCannonBreak#1,"""Una catapulta ha sido transferida para poder saltar a la nave, a continuación, destruya su fuente de alimentación."""
 NpcComOnSuccess#1,"""Hemos confirmado la desaparición de energia emitida del barco. Su rendimiento ha sido admirable."""
-NpcComOnFailure#1,"""With the target's energy down to zero, we've confirmed it has come to an automatic stop. All operatives are requested to return to their regular misión."""
+NpcComOnFailure#1,"""Con la energia del objetivo reducida a cero, hemos confirmado que se ha detenido automaticamente. Se solicita a todos los agentes que regresen a su mision habitual."""
