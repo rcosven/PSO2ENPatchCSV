@@ -1,6 +1,6 @@
-IncidentName#0,"""ランプの中からボワワワン！"""
+IncidentName#0,"""¡Bowawawan desde el interior de la lampara!"""
 TrialBeginMsg#0,"""Ｍｒ．ボワンを時間内に撃破せよ！<br>与えたダメージによりボーナス量が変化！"""
-TrialAbstract#0,"""Ｍｒ．ボワンを時間内に撃破せよ"""
+TrialAbstract#0,"""Sr. Derrota a Bowan dentro del limite de tiempo."""
 NpcComOnPreBegin#0,"""¡Se acerca una nueva<br>fuente de calor!, por favor ten cuidado, ¡Ya viene!"""
 NpcComOnBegin#0,"""/face2 これは！\u3000Ｍｒ．ボワンです。<br>たくさん攻撃してフォトンを与えると<br>良い事が起こるようです。"""
 NpcComOnSuccess#0,"""/face2 Ｍｒ．ボワンにフォトンを<br>たくさん与えることができました！<br>良い事は起きましたでしょうか？"""
