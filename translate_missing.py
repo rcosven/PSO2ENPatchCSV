@@ -68,10 +68,17 @@ def init_cache():
 def should_skip_translate(text: str) -> bool:
     if not text or not text.strip():
         return True
-    if text.startswith("<&") or (text.startswith("<") and ">" in text[:20]):
+    
+    # Saltar líneas que contienen tags HTML del juego (<yellow>, <br>, <c>, etc.)
+    if "<" in text and ">" in text:
         return True
+    
+    if text.startswith("<&"):
+        return True
+    
     if "((" in text or "intextor" in text.lower():
         return True
+    
     return False
 
 
