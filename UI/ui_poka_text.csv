@@ -130,7 +130,7 @@ password_request_ok#0,"""También limitar el equipo contrario a los jugadores co
 team_select#0,"""Equipo (si la contraseña es necesaria para los aliados y los oponentes)."""
 red_team#0,"""Union Roja"""
 blue_team#0,"""Union Azul"""
-passmatch_info#0,"""Compartiendo la contraseña con tus amigos de antemano, puedes jugar<br>con <yellow>$(0) personas a la vez<br> (1 unidad de equipo).<br><br>Si <yellow>menos de $(1) personas<br> introducen la contraseña, <c ff9c70>la partida<br>no empezará.<c><br><br>Nota: Las partidas con contraseña no <amarillo>afectan a las clasificaciones ni generan<br>recompensas.<c> Este modo está diseñado para divertirse con amigos."""
+passmatch_info#0,"""Compartiendo la contraseña con tus amigos de antemano, puedes jugar<br>con <yellow>$(0) personas a la vez<br> (1 unidad de equipo).<br><br>Si <yellow>menos de $(1) personas<br> introducen la contraseña, <c ff9c70>la partida<br>no empezará.<c><br><br>Nota: Las partidas con contraseña no <yellow>afectan a las clasificaciones ni generan<br>recompensas.<c> Este modo está diseñado para divertirse con amigos."""
 MENU_TUTORIAL_BATTLE_ARENA#0,"""The Battle Arena"""
 MENU_TUTORIAL_RANK_MATCH#0,"""Ranked Matches"""
 MENU_TUTORIAL_PASSWORD#0,"""Password Matches"""

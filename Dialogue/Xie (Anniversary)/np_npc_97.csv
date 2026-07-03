@@ -13,5 +13,5 @@ GOODBYE_FAV1#0,"""¡Oh, eso es!, ¡La tienda<br>de intercambio de la 3ra tempora
 GOODBYE_FAV0#0,"""¡Oh, eso es!, ¡La tienda<br>de intercambio de la 3ra temporada<br>esta ahora abierta, debes mirarla ¡Por que hay dulces!"""
 00_01#0,"""Opción 1"""
 00_02#0,"""Opción 2"""
-TALK_ST#0,"""Hablar"""
+TALK_ST#0,"""hablar"""
 C_ORDER_ST#0,"""Escuchar los detalles"""
