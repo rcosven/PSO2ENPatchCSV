@@ -31,6 +31,6 @@ NotifyMethod#2,"""Para garantizar el traslado de las victimas, necesitamos sus c
 FirstTrans#2,"""/face2 Las coordenadas estan confirmadas. ¡La transferencia esta completa! ¡Por favor continua con tu mision!"""
 RescueeFound#2,"""炎に包まれたままだと<br>転送にもリスクが伴いますー！<br>炎を消して助けてあげてください！"""
 GeneratorAdd#2,"""わわっ！<br>新たな要救助者の反応ですよ！<br>全部助けてあげてください！"""
-TimeLimitNear#2,"""¡Apurarse! ¡Por favor, date prisa!"""
+TimeLimitNear#2,"""¡Apurarse! ¡Por favor, cita prisa!"""
 TimeLimitHurry#2,"""/face4 もう限界です！<br>はやく！\u3000はやく！"""
 RescueMethod#2,"""/face2 炎が消えました！<br>要救助者にアクセスして<br>正確な座標を送ってくださいー。"""
