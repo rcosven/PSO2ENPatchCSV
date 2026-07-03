@@ -67,22 +67,41 @@ def should_skip_translate(text: str) -> bool:
     return "$((" in text or "${" in text
 
 def setup_git():
-    """Prepara el repositorio y asegura que estamos en la última versión de GitHub para evitar conflictos."""
+    """Prepara el repositorio y asegura que Git esté inicializado, incluso si Docker borró la carpeta .git."""
     token = os.getenv("GITHUB_TOKEN")
     if not token:
         log("ADVERTENCIA: GITHUB_TOKEN no encontrado. No se podrá subir a GitHub.")
         return False
 
-    log("Configurando credenciales de Git y sincronizando con el repositorio remoto...")
-    subprocess.run(["git", "config", "--global", "user.email", "railway@bot.com"], cwd=REPO_DIR)
-    subprocess.run(["git", "config", "--global", "user.name", "Railway Traductor"], cwd=REPO_DIR)
+    log("Configurando credenciales de Git y sincronizando...")
+    
+    # Previene errores de seguridad de Git al correr como usuario "root" en contenedores
+    subprocess.run(["git", "config", "--global", "--add", "safe.directory", str(REPO_DIR)])
+    subprocess.run(["git", "config", "--global", "user.email", "railway@bot.com"])
+    subprocess.run(["git", "config", "--global", "user.name", "Railway Traductor"])
 
     remote_url = f"https://oauth2:{token}@github.com/rcosven/PSO2ENPatchCSV.git"
-    subprocess.run(["git", "remote", "set-url", "origin", remote_url], cwd=REPO_DIR)
+
+    # Revisar si la carpeta actual ya es un repositorio de Git válido
+    status = subprocess.run(["git", "status"], cwd=REPO_DIR, capture_output=True)
     
-    # Asegurarnos de tener lo último de la rama ES para no sobreescribir avance
-    subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR)
-    subprocess.run(["git", "reset", "--hard", "origin/ES"], cwd=REPO_DIR)
+    if status.returncode != 0:
+        log("No se detectó la carpeta .git (Docker la omitió). Reconstruyendo repositorio internamente...")
+        subprocess.run(["git", "init"], cwd=REPO_DIR)
+        subprocess.run(["git", "checkout", "-b", "ES"], cwd=REPO_DIR)
+        subprocess.run(["git", "remote", "add", "origin", remote_url], cwd=REPO_DIR)
+        
+        log("Descargando historial de tu rama ES desde GitHub...")
+        subprocess.run(["git", "fetch", "origin", "ES"], cwd=REPO_DIR)
+        
+        # El modo --mixed le dice a Git que asocie la historia descargada con los 
+        # archivos que ya existen en tu disco, SIN sobrescribirlos ni borrarlos.
+        subprocess.run(["git", "reset", "--mixed", "origin/ES"], cwd=REPO_DIR)
+    else:
+        log("Repositorio Git detectado correctamente. Actualizando URL...")
+        subprocess.run(["git", "remote", "set-url", "origin", remote_url], cwd=REPO_DIR)
+        subprocess.run(["git", "fetch", "origin", "ES"], cwd=REPO_DIR)
+
     return True
 
 def push_to_github():
