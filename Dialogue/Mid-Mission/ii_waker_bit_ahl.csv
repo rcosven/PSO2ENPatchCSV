@@ -1,6 +1,6 @@
 IncidentName#0,"""Destruye el Fundarge Bits"""
-TrialBeginMsg#0,"""Destruye el Fundarge Bits within the time limit."""
-TrialAbstract#0,"""Destruye el Fundarge Bits within the time limit."""
+TrialBeginMsg#0,"""Destruye el Fundarge Bits dentro del plazo establecido."""
+TrialAbstract#0,"""Destruye el Fundarge Bits dentro del plazo establecido."""
 NpcComOnPreBegin#0,"""……待ってください。<br>何か様子がおかしいです。"""
 NpcComOnBegin#0,"""ファンダージ・ビット出現。<br>急ぎ破壊し、周囲のエネミーへの<br>影響を抑えてください。"""
 NpcComOnSuccess#0,"""ファンダージ・ビットの破壊を確認。<br>各員の協力に感謝します。"""
