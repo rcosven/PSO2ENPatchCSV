@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-PSO2 CSV Spanish Translator (fixed)
-- Detecta idioma por linea (usa langdetect)
-- Solo traduce si NO esta en espanol
-- Mantiene formato exacto: key,"""texto"""
-- Reemplaza " internas por '
-- No agrega comas extras
+PSO2 CSV Spanish Translator - Fixed Version
+- Detecta idioma por linea usando langdetect
+- Solo traduce si la linea NO esta en espanol
+- Protege lineas con tags < > para no romperlos
+- Mantiene el formato key + triple comilla
 """
 
 import os
@@ -15,10 +14,8 @@ import time
 import subprocess
 from pathlib import Path
 from io import StringIO
-
 from deep_translator import GoogleTranslator
 
-# === langdetect (requerido) ===
 try:
     from langdetect import detect, DetectorFactory
     DetectorFactory.seed = 0
@@ -68,17 +65,13 @@ def init_cache():
 def should_skip_translate(text: str) -> bool:
     if not text or not text.strip():
         return True
-    
-    # Saltar líneas que contienen tags HTML del juego (<yellow>, <br>, <c>, etc.)
+    # Protege cualquier linea que tenga tags < >
     if "<" in text and ">" in text:
         return True
-    
     if text.startswith("<&"):
         return True
-    
     if "((" in text or "intextor" in text.lower():
         return True
-    
     return False
 
 
@@ -195,9 +188,9 @@ def read_and_repair_rows(path: Path) -> list[list[str]]:
 
 def main():
     LOG.write_text("", encoding="utf-8")
-    log("=== Traductor CSV PSO2 ES (v2 fixed) ===")
+    log("=== Traductor CSV PSO2 ES (v3 - tags protegidos) ===")
     if not HAS_LANGDETECT:
-        log("ERROR: langdetect no esta instalado. Ejecuta: pip install langdetect")
+        log("ERROR: Falta langdetect. Ejecuta: pip install langdetect")
         return
     git_ready = setup_git()
     conn = init_cache()
