@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-PSO2 CSV Spanish Translator - Fixed Version
-- Detecta idioma por linea usando langdetect
-- Solo traduce si la linea NO esta en espanol
-- Protege lineas con tags < > para no romperlos
-- Mantiene el formato key + triple comilla
+PSO2 CSV Spanish Translator - Todo en un solo script
+- Arregla tags rotos automaticamente (<amarillo>, <rojo>, etc.)
+- Protege lineas con tags para no traducirlas
+- Solo traduce lo que no esta en espanol
 """
 
 import os
@@ -30,12 +29,48 @@ LOG = Path("/app/data/translate_missing.log")
 
 TARGET_FOLDERS = ["Dialogue", "Files", "Misc", "Orders", "Quests", "Story", "Tutorial", "UI"]
 
+# === TAGS ROTOS QUE VAMOS A ARREGLAR AUTOMATICAMENTE ===
+TAG_FIXES = {
+    "<amarillo>": "<yellow>", "</amarillo>": "</yellow>",
+    "<rojo>": "<red>", "</rojo>": "</red>",
+    "<verde>": "<green>", "</verde>": "</green>",
+    "<azul>": "<blue>", "</azul>": "</blue>",
+    "<rosa>": "<pink>", "</rosa>": "</pink>",
+    "<morado>": "<purple>", "</morado>": "</purple>",
+}
+
 
 def log(msg: str):
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
     print(line, flush=True)
     with open(LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+
+
+def fix_broken_tags():
+    """Arregla tags de color rotos por traducciones anteriores"""
+    log("Revisando y arreglando tags rotos (<amarillo>, <rojo>, etc.)...")
+    fixed_count = 0
+    for folder in TARGET_FOLDERS:
+        folder_path = REPO_DIR / folder
+        if not folder_path.exists():
+            continue
+        for csv_file in folder_path.rglob("*.csv"):
+            try:
+                content = csv_file.read_text(encoding="utf-8")
+                new_content = content
+                for bad, good in TAG_FIXES.items():
+                    if bad in new_content:
+                        new_content = new_content.replace(bad, good)
+                        fixed_count += 1
+                if new_content != content:
+                    csv_file.write_text(new_content, encoding="utf-8")
+            except:
+                pass
+    if fixed_count > 0:
+        log(f"Se arreglaron {fixed_count} tags rotos.")
+    else:
+        log("No se encontraron tags rotos.")
 
 
 def apply_release_sed(text: str) -> str:
@@ -188,33 +223,45 @@ def read_and_repair_rows(path: Path) -> list[list[str]]:
 
 def main():
     LOG.write_text("", encoding="utf-8")
-    log("=== Traductor CSV PSO2 ES (v3 - tags protegidos) ===")
+    log("=== Traductor PSO2 ES (Todo en un solo script) ===")
+    
     if not HAS_LANGDETECT:
-        log("ERROR: Falta langdetect. Ejecuta: pip install langdetect")
+        log("ERROR: Falta langdetect. Ejecuta en Railway: pip install langdetect")
         return
+
+    # === PASO 1: Arreglar tags rotos automaticamente ===
+    fix_broken_tags()
+
     git_ready = setup_git()
     conn = init_cache()
+
     files_to_process = []
     for folder in TARGET_FOLDERS:
         folder_dir = REPO_DIR / folder
         if folder_dir.exists():
             for p in folder_dir.rglob("*.csv"):
                 files_to_process.append(p)
+
     log(f"Archivos encontrados: {len(files_to_process)}")
+
     files_processed = 0
     files_modified = 0
+
     for file_path in files_to_process:
         rows = read_and_repair_rows(file_path)
         if not rows:
             continue
+
         original_content = ""
         try:
             original_content = file_path.read_text(encoding="utf-8")
         except:
             pass
+
         texts_ja = []
         texts_en = []
         row_meta = []
+
         for row in rows:
             if len(row) < 2:
                 row_meta.append((row, "", "", False))
@@ -229,8 +276,10 @@ def main():
                 needs = True
                 texts_en.append(text)
             row_meta.append((row, text, lang, needs))
+
         trans_ja = batch_translate(conn, sorted(set(texts_ja)), "ja") if texts_ja else {}
         trans_en = batch_translate(conn, sorted(set(texts_en)), "en") if texts_en else {}
+
         new_rows = []
         for item in row_meta:
             row, text, lang, needs = item
@@ -243,6 +292,7 @@ def main():
                 translated = text
             clean = translated.replace('"', "'")
             new_rows.append([row[0], clean])
+
         output = StringIO()
         for r in new_rows:
             if len(r) == 2:
@@ -250,18 +300,21 @@ def main():
             else:
                 output.write(r[0] + "\n")
         new_content = output.getvalue()
+
         if new_content != original_content:
             with open(file_path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(new_content)
             files_modified += 1
             log(f"MODIFICADO: {file_path.relative_to(REPO_DIR)}")
+
         files_processed += 1
         if files_processed % 50 == 0:
             log(f"Progreso: {files_processed}/{len(files_to_process)} | Modificados: {files_modified}")
             if git_ready and files_modified > 0:
                 push_to_github()
                 files_modified = 0
-    log("Terminado.")
+
+    log("Proceso terminado.")
     conn.close()
     if git_ready:
         push_to_github()
